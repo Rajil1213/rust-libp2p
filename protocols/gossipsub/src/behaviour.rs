@@ -728,7 +728,21 @@ where
 
         // If the message isn't a duplicate and we have sent it to some peers add it to the
         // duplicate cache and memcache.
-        self.duplicate_cache.insert(msg_id.clone());
+        if !self.config.allow_self_origin() {
+            // If we are allowed to receive our own message, we need to only add messages to the
+            // cache when we actually receive it from the network and not when we are about to
+            // publish it.
+            tracing::debug!(
+                ?msg_id,
+                "adding message about to be published to duplicate cache"
+            );
+            self.duplicate_cache.insert(msg_id.clone());
+        } else {
+            tracing::debug!(
+                ?msg_id,
+                "not adding message about to be published to duplicate cache"
+            );
+        };
         self.mcache.put(&msg_id, raw_message.clone());
 
         // If the message is anonymous or has a random author add it to the published message ids
