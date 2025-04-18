@@ -610,6 +610,7 @@ where
         });
 
         // Check the if the message has been published before
+        dbg!(&self.duplicate_cache);
         if self.duplicate_cache.contains(&msg_id) {
             // This message has already been seen. We don't re-publish messages that have already
             // been published on the network.
@@ -742,6 +743,7 @@ where
                 ?msg_id,
                 "not adding message about to be published to duplicate cache"
             );
+            dbg!(&self.duplicate_cache);
         };
         self.mcache.put(&msg_id, raw_message.clone());
 
@@ -783,11 +785,15 @@ where
             self.send_idontwant(&raw_message, &msg_id, raw_message.source.as_ref());
         }
 
-        tracing::debug!(message=%msg_id, "Published message");
+        let cache_contains_msg_id = self.duplicate_cache.contains(&msg_id);
+        tracing::debug!(message=%msg_id, %cache_contains_msg_id, "Published message");
 
         if let Some(metrics) = self.metrics.as_mut() {
             metrics.register_published_message(&topic_hash);
         }
+
+        let cache_contains_msg_id = self.duplicate_cache.contains(&msg_id);
+        tracing::debug!(message=%msg_id, %cache_contains_msg_id, "Published message");
 
         Ok(msg_id)
     }
@@ -1755,6 +1761,7 @@ where
         mut raw_message: RawMessage,
         propagation_source: &PeerId,
     ) {
+        dbg!(&raw_message);
         // Record the received metric
         if let Some(metrics) = self.metrics.as_mut() {
             metrics.msg_recvd_unfiltered(&raw_message.topic, raw_message.raw_protobuf_len());
@@ -1775,12 +1782,14 @@ where
                 return;
             }
         };
+        dbg!(&message);
 
         // Calculate the message id on the transformed data.
         let msg_id = self.config.message_id(&message);
 
         // Broadcast IDONTWANT messages
         if raw_message.raw_protobuf_len() > self.config.idontwant_message_size_threshold() {
+            tracing::debug!(raw_protobuf_len=%raw_message.raw_protobuf_len(), threshold=self.config.idontwant_message_size_threshold(), "sending idontwant because raw_protobuf_len exceeded");
             self.send_idontwant(&raw_message, &msg_id, Some(propagation_source));
         }
 
@@ -1791,6 +1800,9 @@ where
             return;
         }
 
+        dbg!("message is valid");
+
+        dbg!(&self.duplicate_cache);
         if !self.duplicate_cache.insert(msg_id.clone()) {
             tracing::debug!(message=%msg_id, "Message already received, ignoring");
             if let Some((peer_score, ..)) = &mut self.peer_score {
@@ -1821,6 +1833,7 @@ where
 
         // Add the message to our memcache
         self.mcache.put(&msg_id, raw_message.clone());
+        dbg!(&self.mcache);
 
         // Dispatch the message to the user if we are subscribed to any of the topics
         if self.mesh.contains_key(&message.topic) {
